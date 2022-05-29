@@ -1,0 +1,4 @@
+(fp_lib_table
+  (lib (name "Arduino")(type "KiCad")(uri "${KIPRJMOD}/arduino-kicad-library-master/Arduino.pretty")(options "")(descr ""))
+  (lib (name "DRV8844PWPR")(type "KiCad")(uri "${KIPRJMOD}/DRV8844PWPR")(options "")(descr ""))
+)

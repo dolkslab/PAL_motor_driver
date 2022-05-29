@@ -1,0 +1,14 @@
+  	quad_A = 0;
+
+  	float target_pos = 360;
+  	int stop = 0;
+  
+  	while (stop < 100){
+    	stop += control_A(target_pos);
+  	}
+  
+	  digitalWrite(mot_A_1, LOW);
+	  digitalWrite(mot_A_2, LOW);
+	  digitalWrite(mot_A_PWM, LOW);
+	  Serial.print("position: ");
+	  Serial.println(360.*double(quad_A)) / (cpr*gear_ratio);
