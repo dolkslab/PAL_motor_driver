@@ -17,7 +17,7 @@ enum mp_cmd {
 	
 	//Set drive current for motor directly. 
 	//Command length is three bytes: 
-	//Motor A/B select (0x00 or 0xff), drive direction (0x00 or 0xff), 
+	//Motor L/R select (0x00 or 0xff), drive direction (0x00 or 0xff), 
 	//and drive duty cycle (0x00 - 0xff)
 	//Used for testing chasis	
 	MP_CMD_SET_MOT_CURRENT = 0x03,
