@@ -21,7 +21,7 @@ enum mp_cmd {
 	//and drive duty cycle (0x00 - 0xff)
 	//Used for testing chasis	
 	MP_CMD_SET_MOT_CURRENT = 0x03,
-	
+
 	//Set angular velocity of motor, the driver will then use PID to
 	//maintain this speed.
 	//Command length is three bytes:

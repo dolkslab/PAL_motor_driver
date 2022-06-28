@@ -1,32 +1,34 @@
 #include "pinout.h"
 #include "message_protocol.h"
+#include "LOLIN_I2C_MOTOR.h"
+#include "Wire.h"
 
 
-byte motor_pins[] = {MOT_L_A, MOT_L_B, MOT_L_PWM, MOT_R_A, MOT_R_B, MOT_R_PWM};
+LOLIN_I2C_MOTOR motor;
 //Initialize various variables
 int cpr_gr = 23350; //motor gearbox ratio * encoder counts per revolution
 
-volatile long int quad_L = 0; //encoder position
-volatile long int quad_R = 0;
+volatile long int enc_quad_L = 0; //encoder position
+volatile long int enc_quad_R = 0;
 
 int v_sp_R = 0; //velocity setpoint for pid-velocity control
 int v_sp_L = 0;
 
 void enc_L_ISR() {
   if (bitRead(PIND,ENC_L_A) == 0){
-    quad_L++;
+    enc_quad_L++;
   }   
   else {
-    quad_L--;
+    enc_quad_L--;
   }
 }
 
 void enc_R_ISR() {
   if (bitRead(PIND,ENC_L_A) == 0){
-    quad_R++;
+    enc_quad_R++;
   }   
   else {
-    quad_R--;
+    enc_quad_R--;
   }
 }
 
@@ -40,13 +42,13 @@ int bytes_to_int(byte bytes[]) {
 
 //Convert an 16-bit int to an array of bytes
 void int_to_bytes(byte *buf, int x) {
-	buf[0] = ((x >> 8) & 0xFF);
-	buf[1] = (x & 0xFF);
+	buf[1] = ((x >> 8) & 0xFF);
+	buf[0] = (x & 0xFF);
 }
 
 //left sided first order numerical difference
-int ldf(long int *x, int dt) {
-	return (int) ((x[0] - x[1]))/dt;
+int ldf(long int *x, int dt, int a, int b) {
+	return (int) a * ((b * (x[0] - x[1]))/dt);
 }
 //trapezoidal integration of 1 unit
 int trapz(int *x, int dt) {
@@ -57,9 +59,7 @@ int trapz(int *x, int dt) {
 
 //command functions
 void cmd_stop() {
-	for (int i = 0; i < 6; i++) {
-   		digitalWrite(i, LOW);
-  	}
+	motor.changeStatus(MOTOR_CH_BOTH, MOTOR_STATUS_STOP);
 	
 	Serial.write(MP_STATUS_SUCCES);
 	Serial.write(0);
@@ -67,11 +67,9 @@ void cmd_stop() {
 
 void cmd_set_cur(byte msg[]) {
 	//For byte format, see message_protocal.h
-	//mysterious bit operations :)
-	digitalWrite((MOT_L_A & (~msg[0])) + (MOT_R_A & msg[0]) , msg[1]);
-	digitalWrite((MOT_L_B & (~msg[0])) + (MOT_R_B & msg[0]), ~msg[1]);
-	analogWrite((MOT_L_PWM & (~msg[0])) + (MOT_R_PWM & msg[0]), msg[2]);
-
+	motor.changeDuty((msg[0] & 0x01), (float) (msg[2]/2.55));
+	motor.changeStatus((msg[0] & 0x01), ((msg[1] & 1) + 1));
+z
 }
 
 void pid_velocity() {
@@ -89,19 +87,24 @@ void pid_velocity() {
 	static long int ERR_L = 0; //integral of error
 	
 	int Kp = 1;
-	int Ki = 0.1*Kp;
+	int Ki = 0;
 
 	//pos_hist_L[2] = pos_hist_L[1];
 	pos_hist_L[1] = pos_hist_L[0];
-	pos_hist_L[0] = quad_L;
+	pos_hist_L[0] = enc_quad_L*10;
 	
-	int vel_L = ldf(pos_hist_L, dt);
+	int vel_L = ldf(pos_hist_L, dt, 10, 100000); //pos is in pulses, dt is in microseconds, the constants are scaling factors to bring the output to pulses per second agian
 	int sp_I_L[] = {v_sp_L, v_sp_L};
 	ERR_L += (long int) trapz(sp_I_L, dt) - (pos_hist_L[0] - pos_hist_L[1]);
 	
 	int L_cur = Kp * (v_sp_L - vel_L) + Ki * ERR_L; 
-	byte cmd_L[] = {0x00, (byte) 0xFF*(L_cur > 0), (byte) min(abs(L_cur), 255)};
+	byte cmd_L[] = {0x00, 0, 128};
 	cmd_set_cur(cmd_L);
+	
+	byte serout[2] = {0};
+	int_to_bytes(serout, (v_sp_L));
+	Serial.write(serout, 2);
+	
 	
 	
 	t1 = t0;
@@ -110,11 +113,14 @@ void pid_velocity() {
 
 void setup() {
 	//setup code, set correct pinmodde for each pin and write outputs low initially
+  	/*
   	for (int i = 0; i < 6; i++) {
    		pinMode(i, OUTPUT);
    		digitalWrite(i, LOW);
-  	}
-  
+  	}*/
+  	
+  	motor.changeFreq(MOTOR_CH_BOTH, 440);
+  	pinMode(LED_BUILTIN, OUTPUT);
 	pinMode(ENC_L_A, INPUT);
 	pinMode(ENC_L_B, INPUT);
 	attachInterrupt(digitalPinToInterrupt(ENC_L_A), enc_L_ISR, RISING);
@@ -122,14 +128,19 @@ void setup() {
 	while (!Serial) {
     	; // wait for serial port to connect. Needed for native USB port only
   	}
+  	
+	while (motor.PRODUCT_ID != PRODUCT_ID_I2C_MOTOR) { //wait motor shield ready.{
+    	motor.getInfo();
+    	digitalWrite(LED_BUILTIN, HIGH);
+  	}
+  	digitalWrite(LED_BUILTIN, LOW);
 }
 
 
-
+byte exec_cmd = MP_CMD_STOP;
 void loop() {
 	byte avail = Serial.available();
 	byte dlen = Serial.peek();
-	byte exec_cmd = MP_CMD_STOP;
 	if (avail > (1 + dlen)) {
 		Serial.read(); // Now delete the first message
 		byte cmd = Serial.read();
