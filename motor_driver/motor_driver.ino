@@ -69,7 +69,6 @@ void cmd_set_cur(byte msg[]) {
 	//For byte format, see message_protocal.h
 	motor.changeDuty((msg[0] & 0x01), (float) (msg[2]/2.55));
 	motor.changeStatus((msg[0] & 0x01), ((msg[1] & 1) + 1));
-z
 }
 
 void pid_velocity() {
